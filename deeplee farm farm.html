@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Farm Operations Management System</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f4f6f4; color: #1b1b1b; }
+  header { background: #2e7d32; color: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  header h1 { font-size: 18px; }
+  nav a { color: #fff; text-decoration: none; margin-right: 14px; font-size: 14px; opacity: .85; }
+  nav a:hover, nav a.active { opacity: 1; text-decoration: underline; }
+  button { cursor: pointer; border: none; border-radius: 6px; padding: 8px 14px; font-size: 14px; background: #2e7d32; color: #fff; }
+  button:hover { background: #256428; }
+  button.ghost { background: #e0e0e0; color: #333; }
+  button.danger { background: #c62828; }
+  main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+  .card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .kpi { font-size: 28px; font-weight: 700; color: #2e7d32; }
+  .kpi.warn { color: #c62828; }
+  .label { font-size: 12px; text-transform: uppercase; color: #666; letter-spacing: .5px; }
+  form.inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  input, select { padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+  input:focus, select:focus { outline: 2px solid #2e7d32; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; }
+  th { background: #f0f4f0; font-size: 12px; text-transform: uppercase; color: #555; }
+  .low { color: #c62828; font-weight: 700; }
+  .ok { color: #2e7d32; font-weight: 700; }
+  .login { max-width: 340px; margin: 80px auto; }
+  .login h2 { margin-bottom: 16px; color: #2e7d32; }
+  .login input { width: 100%; margin-bottom: 10px; }
+  .login button { width: 100%; padding: 10px; }
+  .err { color: #c62828; font-size: 13px; margin-bottom: 8px; }
+  .hint { font-size: 12px; color: #777; margin-top: 10px; }
+  canvas { max-height: 220px; }
+  .chartbox { height: 220px; }
+  .hidden { display: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .badge-in { background: #e8f5e9; color: #2e7d32; }
+  .badge-out { background: #ffebee; color: #c62828; }
+</style>
+</head>
+<body>
+
+<header id="topbar" class="hidden">
+  <h1>🌾 Farm Operations</h1>
+  <nav id="nav"></nav>
+  <span>
+    <span id="whoami" style="font-size:13px;opacity:.9;margin-right:10px;"></span>
+    <button class="ghost" onclick="logout()">Logout</button>
+  </span>
+</header>
+
+<main>
+
+  <!-- LOGIN -->
+  <section id="loginView" class="card login">
+    <h2>Sign in</h2>
+    <div id="loginErr" class="err"></div>
+    <input id="email" placeholder="Email" value="manager@farm.com">
+    <input id="password" type="password" placeholder="Password" value="password123">
+    <button onclick="login()">Login</button>
+    <p class="hint">Demo accounts (password: <b>password123</b>):<br>
+      manager@farm.com (manager) · staff@farm.com (staff) · admin@farm.com (admin)</p>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="dashboardView" class="hidden">
+    <h2 style="margin-bottom:14px;color:#2e7d32;">Farm Overview</h2>
+    <div class="grid" style="margin-bottom:16px;">
+      <div class="card"><div class="label">Crops</div><div class="kpi" id="kCrops">0</div></div>
+      <div class="card"><div class="label">Harvested</div><div class="kpi" id="kHarvested">0</div></div>
+      <div class="card"><div class="label">Animals</div><div class="kpi" id="kAnimals">0</div></div>
+      <div class="card"><div class="label">Need attention</div><div class="kpi warn" id="kAttention">0</div></div>
+      <div class="card"><div class="label">Low stock items</div><div class="kpi warn" id="kLow">0</div></div>
+      <div class="card"><div class="label">Balance (KES)</div><div class="kpi" id="kBalance">0</div></div>
+      <div class="card"><div class="label">Present today</div><div class="kpi" id="kPresent">0</div></div>
+    </div>
+    <div class="grid">
+      <div class="card"><h3 style="font-size:14px;margin-bottom:8px;">Income vs Expenses</h3><div class="chartbox"><canvas id="chartFin"></canvas></div></div>
+      <div class="card"><h3 style="font-size:14px;margin-bottom:8px;">Livestock Health</h3><div class="chartbox"><canvas id="chartHealth"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-size:14px;margin-bottom:8px;">⚠ Low stock alerts</h3>
+      <div id="lowStockList" style="font-size:14px;"></div>
+    </div>
+  </section>
+
+  <!-- CROPS -->
+  <section id="cropsView" class="hidden">
+    <h2 style="margin-bottom:14px;color:#2e7d32;">Crop Management</h2>
+    <div class="card">
+      <form class="inline" onsubmit="addCrop(event)">
+        <input id="cName" placeholder="Crop name" required>
+        <input id="cPlant" type="date" required title="Planting date">
+        <input id="cHarvest" type="date" title="Expected harvest date">
+        <select id="cStatus"><option>Planted</option><option>Growing</option><option>Harvested</option></select>
+        <button>Add crop</button>
+      </form>
+      <div id="cropErr" class="err"></div>
+      <table><thead><tr><th>Name</th><th>Planted</th><th>Harvest</th><th>Status</th><th></th></tr></thead><tbody id="cropRows"></tbody></table>
+    </div>
+  </section>
+
+  <!-- LIVESTOCK -->
+  <section id="livestockView" class="hidden">
+    <h2 style="margin-bottom:14px;color:#2e7d32;">Livestock Management</h2>
+    <div class="card">
+      <form class="inline" onsubmit="addLivestock(event)">
+        <input id="lType" placeholder="Type (e.g. Cattle)" required>
+        <input id="lQty" type="number" min="1" value="1" style="width:90px;">
+        <select id="lHealth"><option>Healthy</option><option>Under Observation</option><option>Treatment</option></select>
+        <button>Add group</button>
+      </form>
+      <table><thead><tr><th>Type</th><th>Quantity</th><th>Health</th><th></th></tr></thead><tbody id="liveRows"></tbody></table>
+    </div>
+  </section>
+
+  <!-- INVENTORY -->
+  <section id="inventoryView" class="hidden">
+    <h2 style="margin-bottom:14px;color:#2e7d32;">Inventory Management</h2>
+    <div class="card">
+      <form class="inline" onsubmit="addItem(event)">
+        <input id="iName" placeholder="Item name" required>
+        <input id="iQty" type="number" min="0" placeholder="Quantity" style="width:110px;" required>
+        <input id="iReorder" type="number" min="0" placeholder="Reorder level" style="width:130px;" required>
+        <button>Add item</button>
+      </form>
+      <table><thead><tr><th>Item</th><th>Quantity</th><th>Reorder</th><th>Status</th><th>Use</th><th></th></tr></thead><tbody id="invRows"></tbody></table>
+    </div>
+  </section>
+
+  <!-- FINANCE -->
+  <section id="financeView" class="hidden">
+    <h2 style="margin-bottom:14px;color:#2e7d32;">Financial Management</h2>
+    <div class="card">
+      <form class="inline" onsubmit="addTxn(event)">
+        <select id="tType"><option value="income">Income</option><option value="expense">Expense</option></select>
+        <input id="tAmount" type="number" step="0.01" min="0.01" placeholder="Amount" style="width:130px;" required>
+        <input id="tDate" type="date" required>
+        <input id="tDesc" placeholder="Description" style="flex:1;min-width:160px;">
+        <button>Add</button>
+      </form>
+      <div id="finErr" class="err"></div>
+      <p style="margin:10px 0;font-size:15px;">
+        <b>Income:</b> KES <span id="finIncome">0.00</span> &nbsp;|&nbsp;
+        <b>Expense:</b> KES <span id="finExpense">0.00</span> &nbsp;|&nbsp;
+        <b>Balance:</b> KES <span id="finBalance">0.00</span>
+      </p>
+      <table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Description</th><th></th></tr></thead><tbody id="txnRows"></tbody></table>
+    </div>
+  </section>
+
+  <!-- ATTENDANCE -->
+  <section id="attendanceView" class="hidden">
+    <h2 style="margin-bottom:14px;color:#2e7d32;">Staff Attendance</h2>
+    <div class="card">
+      <div id="attSelf" style="margin-bottom:12px;"></div>
+      <div id="attErr" class="err"></div>
+      <p style="margin-bottom:10px;font-size:14px;color:#555;">Today: <b id="attToday"></b></p>
+      <table>
+        <thead><tr><th>Staff</th><th>Date</th><th>Check-in</th><th>Check-out</th><th>Hours</th><th>Status</th><th></th></tr></thead>
+        <tbody id="attRows"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;margin-bottom:8px;">Attendance summary (this month)</h3>
+      <div id="attSummary" style="font-size:14px;"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+/* ============ DATA LAYER (localStorage) ============ */
+const SEED_KEY = 'farmops_seeded_v2';
+
+function seed() {
+  if (localStorage.getItem(SEED_KEY)) return;
+  const db = {
+    users: [
+      { id: 1, name: 'Admin',    email: 'admin@farm.com',   password: 'password123', role: 'admin' },
+      { id: 2, name: 'Manager',  email: 'manager@farm.com', password: 'password123', role: 'manager' },
+      { id: 3, name: 'Staff',    email: 'staff@farm.com',   password: 'password123', role: 'staff' },
+      { id: 4, name: 'Mary',     email: 'mary@farm.com',    password: 'password123', role: 'staff' },
+      { id: 5, name: 'Peter',    email: 'peter@farm.com',   password: 'password123', role: 'staff' }
+    ],
+    crops: [
+      { id: 1, name: 'Maize',    plant: '2026-03-01', harvest: '2026-07-15', status: 'Growing' },
+      { id: 2, name: 'Beans',    plant: '2026-03-10', harvest: '2026-06-20', status: 'Harvested' },
+      { id: 3, name: 'Tomatoes', plant: '2026-04-02', harvest: '',           status: 'Planted' }
+    ],
+    livestock: [
+      { id: 1, type: 'Cattle', qty: 25, health: 'Healthy' },
+      { id: 2, type: 'Goats',  qty: 40, health: 'Healthy' },
+      { id: 3, type: 'Poultry',qty: 120, health: 'Under Observation' }
+    ],
+    inventory: [
+      { id: 1, name: 'Maize seed', qty: 45, reorder: 20 },
+      { id: 2, name: 'Fertiliser', qty: 12, reorder: 30 },
+      { id: 3, name: 'Animal feed', qty: 8, reorder: 15 },
+      { id: 4, name: 'Tools', qty: 60, reorder: 10 }
+    ],
+    transactions: [
+      { id: 1, type: 'income',  amount: 45000, date: '2026-03-05', desc: 'Beans sale' },
+      { id: 2, type: 'expense', amount: 12000, date: '2026-03-08', desc: 'Fertiliser purchase' },
+      { id: 3, type: 'income',  amount: 30000, date: '2026-04-01', desc: 'Milk sales' },
+      { id: 4, type: 'expense', amount: 8500,  date: '2026-04-10', desc: 'Veterinary services' }
+    ],
+    attendance: []
+  };
+  localStorage.setItem('farmops_db', JSON.stringify(db));
+  localStorage.setItem(SEED_KEY, '1');
+}
+
+function db()      { return JSON.parse(localStorage.getItem('farmops_db')); }
+function saveDb(d) { localStorage.setItem('farmops_db', JSON.stringify(d)); }
+function nextId(arr){ return arr.length ? Math.max(...arr.map(x => x.id)) + 1 : 1; }
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function nowTime()  { return new Date().toTimeString().slice(0, 5); }
+
+function currentUser() {
+  const id = localStorage.getItem('farmops_user');
+  if (!id) return null;
+  return db().users.find(u => u.id === +id) || null;
+}
+function canManage() { const u = currentUser(); return u && (u.role === 'admin' || u.role === 'manager'); }
+
+/* ============ AUTH ============ */
+function login() {
+  const email = document.getElementById('email').value.trim().toLowerCase();
+  const pass  = document.getElementById('password').value;
+  const user = db().users.find(u => u.email === email && u.password === pass);
+  const err = document.getElementById('loginErr');
+  if (!user) { err.textContent = 'Invalid email or password.'; return; }
+  err.textContent = '';
+  localStorage.setItem('farmops_user', user.id);
+  route('dashboard');
+}
+
+function logout() {
+  localStorage.removeItem('farmops_user');
+  route('login');
+}
+
+/* ============ ROUTING ============ */
+let currentRoute = 'login';
+
+function route(name) {
+  currentRoute = name;
+  const views = ['login','dashboard','crops','livestock','inventory','finance','attendance'];
+  views.forEach(v => document.getElementById(v + 'View').classList.toggle('hidden', v !== name));
+  document.getElementById('loginView').classList.toggle('hidden', name !== 'login');
+  const bar = document.getElementById('topbar');
+  bar.classList.toggle('hidden', name === 'login');
+
+  const u = currentUser();
+  if (u) {
+    document.getElementById('whoami').textContent = `${u.name} (${u.role})`;
+    const nav = document.getElementById('nav');
+    const links = [
+      ['dashboard','Dashboard'], ['crops','Crops'], ['livestock','Livestock'],
+      ['inventory','Inventory'], ['finance','Finance'], ['attendance','Attendance']
+    ];
+    nav.innerHTML = links.map(([k,label]) =>
+      `<a href="#" class="${k===name?'active':''}" onclick="route('${k}');return false;">${label}</a>`
+    ).join('');
+  }
+
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'crops')     renderCrops();
+  if (name === 'livestock') renderLivestock();
+  if (name === 'inventory') renderInventory();
+  if (name === 'finance')   renderFinance();
+  if (name === 'attendance')renderAttendance();
+}
+
+/* ============ DASHBOARD ============ */
+let chartFinRef = null, chartHealthRef = null;
+
+function renderDashboard() {
+  const d = db();
+  const crops = d.crops;
+  const harvested = crops.filter(c => c.status === 'Harvested').length;
+  const animals = d.livestock.reduce((s, l) => s + l.qty, 0);
+  const attention = d.livestock.filter(l => l.health !== 'Healthy').reduce((s, l) => s + l.qty, 0);
+  const lowItems = d.inventory.filter(i => i.qty <= i.reorder);
+  const income  = d.transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expense = d.transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const presentToday = new Set((d.attendance || []).filter(a => a.date === todayStr()).map(a => a.userId)).size;
+
+  document.getElementById('kCrops').textContent = crops.length;
+  document.getElementById('kHarvested').textContent = harvested;
+  document.getElementById('kAnimals').textContent = animals;
+  document.getElementById('kAttention').textContent = attention;
+  document.getElementById('kLow').textContent = lowItems.length;
+  document.getElementById('kBalance').textContent = (income - expense).toLocaleString('en-KE', { minimumFractionDigits: 2 });
+  document.getElementById('kPresent').textContent = presentToday;
+
+  document.getElementById('lowStockList').innerHTML = lowItems.length
+    ? lowItems.map(i => `<div class="low">${i.name} — ${i.qty} left (reorder at ${i.reorder})</div>`).join('')
+    : '<div class="ok">All stock levels are healthy.</div>';
+
+  const ctx1 = document.getElementById('chartFin');
+  if (chartFinRef) chartFinRef.destroy();
+  chartFinRef = new Chart(ctx1, {
+    type: 'bar',
+    data: { labels: ['Income','Expense'], datasets: [{ label: 'KES', data: [income, expense], backgroundColor: ['#2e7d32','#c62828'], borderRadius: 6 }] },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  const healthy = Math.max(0, animals - attention);
+  const ctx2 = document.getElementById('chartHealth');
+  if (chartHealthRef) chartHealthRef.destroy();
+  chartHealthRef = new Chart(ctx2, {
+    type: 'doughnut',
+    data: { labels: ['Healthy','Needs attention'], datasets: [{ data: [healthy, attention], backgroundColor: ['#2e7d32','#f9a825'] }] },
+    options: { plugins: { legend: { position: 'bottom' } } }
+  });
+}
+
+/* ============ CROPS ============ */
+function renderCrops() {
+  const rows = db().crops;
+  const can = canManage();
+  document.getElementById('cropRows').innerHTML = rows.map(c => `
+    <tr>
+      <td>${escapeHtml(c.name)}</td>
+      <td>${c.plant || '-'}</td>
+      <td>${c.harvest || '-'}</td>
+      <td>${c.status}</td>
+      <td>${can ? `<button class="danger" onclick="delCrop(${c.id})">Delete</button>` : ''}</td>
+    </tr>`).join('') || '<tr><td colspan="5" style="color:#888;">No crops yet.</td></tr>';
+}
+
+function addCrop(e) {
+  e.preventDefault();
+  const name = document.getElementById('cName').value.trim();
+  const plant = document.getElementById('cPlant').value;
+  const harvest = document.getElementById('cHarvest').value;
+  const status = document.getElementById('cStatus').value;
+  const err = document.getElementById('cropErr');
+  if (harvest && harvest < plant) { err.textContent = 'Harvest date cannot be before planting date.'; return; }
+  err.textContent = '';
+  const d = db();
+  d.crops.push({ id: nextId(d.crops), name, plant, harvest, status });
+  saveDb(d);
+  e.target.reset();
+  renderCrops();
+}
+
+function delCrop(id) {
+  if (!confirm('Delete this crop record?')) return;
+  const d = db();
+  d.crops = d.crops.filter(c => c.id !== id);
+  saveDb(d);
+  renderCrops();
+}
+
+/* ============ LIVESTOCK ============ */
+function renderLivestock() {
+  document.getElementById('liveRows').innerHTML = db().livestock.map(l => `
+    <tr>
+      <td>${escapeHtml(l.type)}</td>
+      <td>${l.qty}</td>
+      <td class="${l.health === 'Healthy' ? 'ok' : 'low'}">${l.health}</td>
+      <td><button class="danger" onclick="delLivestock(${l.id})">Delete</button></td>
+    </tr>`).join('') || '<tr><td colspan="4" style="color:#888;">No livestock yet.</td></tr>';
+}
+
+function addLivestock(e) {
+  e.preventDefault();
+  const type = document.getElementById('lType').value.trim();
+  const qty = +document.getElementById('lQty').value;
+  const health = document.getElementById('lHealth').value;
+  const d = db();
+  d.livestock.push({ id: nextId(d.livestock), type, qty, health });
+  saveDb(d);
+  e.target.reset();
+  document.getElementById('lQty').value = 1;
+  renderLivestock();
+}
+
+function delLivestock(id) {
+  if (!confirm('Delete this livestock record?')) return;
+  const d = db();
+  d.livestock = d.livestock.filter(l => l.id !== id);
+  saveDb(d);
+  renderLivestock();
+}
+
+/* ============ INVENTORY ============ */
+function renderInventory() {
+  document.getElementById('invRows').innerHTML = db().inventory.map(i => {
+    const low = i.qty <= i.reorder;
+    return `<tr>
+      <td>${escapeHtml(i.name)}</td>
+      <td>${i.qty}</td>
+      <td>${i.reorder}</td>
+      <td class="${low ? 'low' : 'ok'}">${low ? 'LOW' : 'OK'}</td>
+      <td><button class="ghost" onclick="useItem(${i.id})">−1</button></td>
+      <td><button class="danger" onclick="delItem(${i.id})">Delete</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" style="color:#888;">No items yet.</td></tr>';
+}
+
+function addItem(e) {
+  e.preventDefault();
+  const name = document.getElementById('iName').value.trim();
+  const qty = +document.getElementById('iQty').value;
+  const reorder = +document.getElementById('iReorder').value;
+  const d = db();
+  d.inventory.push({ id: nextId(d.inventory), name, qty, reorder });
+  saveDb(d);
+  e.target.reset();
+  renderInventory();
+}
+
+function useItem(id) {
+  const d = db();
+  const item = d.inventory.find(i => i.id === id);
+  if (!item) return;
+  if (item.qty <= 0) { alert('No stock left for ' + item.name); return; }
+  item.qty -= 1;
+  saveDb(d);
+  renderInventory();
+}
+
+function delItem(id) {
+  if (!confirm('Delete this inventory item?')) return;
+  const d = db();
+  d.inventory = d.inventory.filter(i => i.id !== id);
+  saveDb(d);
+  renderInventory();
+}
+
+/* ============ FINANCE ============ */
+function renderFinance() {
+  const rows = db().transactions.slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+  const income = rows.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expense = rows.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  document.getElementById('finIncome').textContent = income.toFixed(2);
+  document.getElementById('finExpense').textContent = expense.toFixed(2);
+  document.getElementById('finBalance').textContent = (income - expense).toFixed(2);
+
+  document.getElementById('txnRows').innerHTML = rows.map(t => `
+    <tr>
+      <td>${t.date}</td>
+      <td class="${t.type === 'income' ? 'ok' : 'low'}">${t.type}</td>
+      <td>${t.amount.toFixed(2)}</td>
+      <td>${escapeHtml(t.desc || '')}</td>
+      <td><button class="danger" onclick="delTxn(${t.id})">Delete</button></td>
+    </tr>`).join('') || '<tr><td colspan="5" style="color:#888;">No transactions yet.</td></tr>';
+}
+
+function addTxn(e) {
+  e.preventDefault();
+  const type = document.getElementById('tType').value;
+  const amount = +document.getElementById('tAmount').value;
+  const date = document.getElementById('tDate').value;
+  const desc = document.getElementById('tDesc').value.trim();
+  const err = document.getElementById('finErr');
+  if (amount <= 0) { err.textContent = 'Amount must be greater than zero.'; return; }
+  err.textContent = '';
+  const d = db();
+  d.transactions.push({ id: nextId(d.transactions), type, amount, date, desc });
+  saveDb(d);
+  e.target.reset();
+  renderFinance();
+}
+
+function delTxn(id) {
+  if (!confirm('Delete this transaction?')) return;
+  const d = db();
+  d.transactions = d.transactions.filter(t => t.id !== id);
+  saveDb(d);
+  renderFinance();
+}
+
+/* ============ ATTENDANCE ============ */
+function renderAttendance() {
+  const d = db();
+  const user = currentUser();
+  const today = todayStr();
+  document.getElementById('attToday').textContent = today;
+
+  // Self check-in / check-out control
+  const mine = (d.attendance || []).find(a => a.userId === user.id && a.date === today);
+  const box = document.getElementById('attSelf');
+  if (!mine) {
+    box.innerHTML = `<button onclick="checkIn()">✅ Check in now</button>
+      <span style="margin-left:10px;color:#777;font-size:13px;">You have not checked in today.</span>`;
+  } else if (!mine.out) {
+    box.innerHTML = `<span class="badge badge-in">Checked in at ${mine.in}</span>
+      <button style="margin-left:10px;" onclick="checkOut()">🚪 Check out</button>`;
+  } else {
+    box.innerHTML = `<span class="badge badge-out">Done — ${mine.in} → ${mine.out} (${hours(mine.in, mine.out)} h)</span>`;
+  }
+
+  // Table (managers see all, staff see own)
+  const rows = (d.attendance || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+  const visible = canManage() ? rows : rows.filter(r => r.userId === user.id);
+  document.getElementById('attRows').innerHTML = visible.map(a => {
+    const u = d.users.find(x => x.id === a.userId);
+    return `<tr>
+      <td>${escapeHtml(u ? u.name : 'User ' + a.userId)}</td>
+      <td>${a.date}</td>
+      <td>${a.in || '-'}</td>
+      <td>${a.out || '-'}</td>
+      <td>${a.out ? hours(a.in, a.out).toFixed(2) : '-'}</td>
+      <td>${a.out ? '<span class="ok">Present</span>' : '<span class="low">In progress</span>'}</td>
+      <td>${canManage() ? `<button class="danger" onclick="delAttendance(${a.id})">Delete</button>` : ''}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" style="color:#888;">No attendance records yet.</td></tr>';
+
+  // Monthly summary
+  const month = today.slice(0, 7);
+  const summary = {};
+  rows.filter(a => a.date.startsWith(month) && a.out).forEach(a => {
+    const k = a.userId;
+    summary[k] = summary[k] || { days: 0, hrs: 0 };
+    summary[k].days += 1;
+    summary[k].hrs += hours(a.in, a.out);
+  });
+  const entries = Object.entries(summary);
+  document.getElementById('attSummary').innerHTML = entries.length
+    ? entries.map(([uid, s]) => {
+        const u = d.users.find(x => x.id === +uid);
+        return `<div style="margin-bottom:4px;"><b>${escapeHtml(u ? u.name : 'User ' + uid)}</b> — ${s.days} day(s), ${s.hrs.toFixed(2)} hrs</div>`;
+      }).join('')
+    : '<div style="color:#888;">No completed records this month.</div>';
+}
+
+function checkIn() {
+  const user = currentUser();
+  const d = db();
+  const today = todayStr();
+  if (!d.attendance) d.attendance = [];
+  const existing = d.attendance.find(a => a.userId === user.id && a.date === today);
+  const err = document.getElementById('attErr');
+  if (existing) { err.textContent = 'You already checked in today.'; return; }
+  err.textContent = '';
+  d.attendance.push({ id: nextId(d.attendance), userId: user.id, date: today, in: nowTime(), out: null });
+  saveDb(d);
+  renderAttendance();
+}
+
+function checkOut() {
+  const user = currentUser();
+  const d = db();
+  const today = todayStr();
+  const rec = (d.attendance || []).find(a => a.userId === user.id && a.date === today);
+  if (!rec || rec.out) return;
+  rec.out = nowTime();
+  saveDb(d);
+  renderAttendance();
+}
+
+function delAttendance(id) {
+  if (!confirm('Delete this attendance record?')) return;
+  const d = db();
+  d.attendance = (d.attendance || []).filter(a => a.id !== id);
+  saveDb(d);
+  renderAttendance();
+}
+
+function hours(t1, t2) {
+  if (!t1 || !t2) return 0;
+  const [h1, m1] = t1.split(':').map(Number);
+  const [h2, m2] = t2.split(':').map(Number);
+  return Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1)) / 60;
+}
+
+/* ============ HELPERS ============ */
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+/* ============ BOOT ============ */
+seed();
+if (currentUser()) route('dashboard'); else route('login');
+</script>
+</body>
+</html>
